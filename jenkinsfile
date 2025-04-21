@@ -20,23 +20,29 @@ pipeline{
             withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){
                 parallel {                    
                     stage('SAST scan'){
-                        sh '''
-                        cd calulator-webapp
-                        docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk code test --project-name="sast-code-test"'
-                        '''
+                        steps{
+                            sh '''
+                            cd calulator-webapp
+                            docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk code test --project-name="sast-code-test"'
+                            '''
+                        }
                     }
                     stage('SCA scan'){
-                        sh '''
-                        cd calulator-webapp
-                        docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk  test --project-name="sca-code-test"'
-                        '''
+                        steps{
+                            sh '''
+                            cd calulator-webapp
+                            docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk  test --project-name="sca-code-test"'
+                            '''
+                        }
                     }
                     stage('DAST scan'){
-                        sh '''
-                        cd calulator-webapp
-                        mvn clean package
-                        docker run -v ${pwd}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081 -r scan-report.html
-                        '''
+                        steps{
+                            sh '''
+                            cd calulator-webapp
+                            mvn clean package
+                            docker run -v ${pwd}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081 -r scan-report.html
+                            '''
+                        }
                     }
                 }
             }
