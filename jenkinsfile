@@ -5,8 +5,9 @@ pipeline{
         stage('Git Clone and build war file'){
             steps{
                 withCredentials([usernamePassword(credentialsId: 'be893817-ca5c-4d3a-9ed0-c0f6ee27ea20', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                sh '''                       
-                    rm -rf calculator-webapp   
+                sh '''  
+                    ls                     
+                    rm -rf calculator-webapp
                     git clone https://${USER}:${PASS}@github.com/Saqeeb1234/calulator-webapp.git 
                     cd calulator-webapp
                     echo "Creating war file........"
