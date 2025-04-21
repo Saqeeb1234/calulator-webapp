@@ -16,9 +16,9 @@ pipeline{
                 }
             }
         }
-        stage('testing code'){            
-            parallel {     
-                withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){
+        stage('testing code'){    
+            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){        
+                parallel {                     
                     stages {
                         stage('SAST scan'){
                             steps{
