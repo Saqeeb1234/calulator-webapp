@@ -1,0 +1,58 @@
+pipeline{
+    agent any
+
+    stages{
+        stage('Git Clone and build war file'){
+            steps{
+                withCredentials([usernamePassword(credentialsId: 'be893817-ca5c-4d3a-9ed0-c0f6ee27ea20', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                sh '''                       
+                    rm -rf calculator-webapp   
+                    git clone https://${USER}:${PASS}@github.com/Saqeeb1234/calulator-webapp.git 
+                    cd calulator-webapp
+                    echo "Creating war file........"
+                    mvn clean package                    
+                    echo "war file created....."
+                    '''
+                }
+            }
+        }
+        stage('testing code'){
+            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){
+                parallel {                    
+                    stage('SAST scan'){
+                        sh '''
+                        cd calulator-webapp
+                        docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk code test --project-name="sast-code-test"'
+                        '''
+                    }
+                    stage('SCA scan'){
+                        sh '''
+                        cd calulator-webapp
+                        docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk  test --project-name="sca-code-test"'
+                        '''
+                    }
+                    stage('DAST scan'){
+                        sh '''
+                        cd calulator-webapp
+                        mvn clean package
+                        docker run -v ${pwd}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081 -r scan-report.html
+                        '''
+                    }
+                }
+            }
+        }
+        stage('test Dockerfile and build Docker Image'){
+            steps{
+                sh '''
+                cd calulator-webapp
+                echo "testing docket image........"
+                docker run --rm -i hadolint/hadolint < Dockerfile
+                echo "Build Docker image........"
+                docker build -t calculator-webapp:${BUILD_NUMBER} .
+                echo "Docker image built......"
+                '''
+            }
+        }
+
+    }
+}
