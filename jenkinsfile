@@ -16,28 +16,31 @@ pipeline{
                 }
             }
         }
-        stage('testing code'){    
-            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){        
+        stage('testing code'){          
                 parallel {                     
-                    stages {
-                        stage('SAST scan'){
-                            steps{
+                    stage('SAST scan'){
+                        steps{
+                            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){  
                                 sh '''
                                 cd calulator-webapp
                                 docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk code test --project-name="sast-code-test"'
                                 '''
                             }
                         }
-                        stage('SCA scan'){
-                            steps{
+                    }
+                    stage('SCA scan'){
+                        steps{
+                            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){
                                 sh '''
                                 cd calulator-webapp
                                 docker run --rm -it --env ${Snyk-token} -v $(pwd):/app snyk/snyk:maven 'snyk  test --project-name="sca-code-test"'
                                 '''
                             }
                         }
-                        stage('DAST scan'){
-                            steps{
+                    }
+                    stage('DAST scan'){
+                        steps{
+                            withCredentials([string(credentialsId: 'Snyk-token', variable: 'Snyk-token')]){
                                 sh '''
                                 cd calulator-webapp
                                 mvn clean package
@@ -46,9 +49,8 @@ pipeline{
                             }
                         }
                     }
-                }
+                }            
             }
-        }
         stage('test Dockerfile and build Docker Image'){
             steps{
                 sh '''
