@@ -58,9 +58,11 @@ pipeline{
                 withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]){
                     sh '''
                     cd calulator-webapp
-                    docker run -d -p 8081:8080 calculator-webapp:${BUILD_NUMBER}
+                    docker run -d --name calc-container -p 8081:8080 calculator-webapp:${BUILD_NUMBER}
                     sleep 10
-                    docker run -v ${PWD}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081 -r scan-report.html
+                    docker run -v ${PWD}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081
+                    docker stop calc-container
+                    docker rm calc-container
                     '''
                 }
             }
