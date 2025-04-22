@@ -74,7 +74,7 @@ public class DateInfoServlet extends HttpServlet {
                 dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH) + "</h2>");
         response.getWriter().println("<h3>Your zodiac sign is: " + zodiac + "</h3>");
         // XSS vulnerable echo
-        response.getWriter().println("<p>You entered: " + dobInput + "</p>");  // adding for snyk test
+        // response.getWriter().println("<p>You entered: " + dobInput + "</p>");  // adding for snyk test
         response.getWriter().println("<br><a href='index.html'>Back to Dashboard</a>");
         response.getWriter().println("</body></html>");
     }
