@@ -47,6 +47,8 @@ pipeline{
                 cd calulator-webapp
                 echo "testing docket image........"
                 docker run --rm -i hadolint/hadolint < Dockerfile
+                docker save calculator-webapp:trivy -o image.tar
+                trivy image --input image.tar
                 echo "Build Docker image........"
                 docker build -t calculator-webapp:${BUILD_NUMBER} .
                 echo "Docker image built......"
