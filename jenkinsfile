@@ -64,7 +64,7 @@ pipeline{
                     docker run -d --name calc-container -p 8081:8080 calculator-webapp:${BUILD_NUMBER}
                     sleep 10
                     mkdir report && chmod 777 -R report && cd report 
-                    docker run -v ${PWD}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081
+                    docker run -v ${PWD}:/zap/wrk/:rw --network="host" zaproxy/zap-stable zap-baseline.py -t http://localhost:8081 -c zap-rules.conf
                     docker stop calc-container
                     docker rm calc-container
                     '''
