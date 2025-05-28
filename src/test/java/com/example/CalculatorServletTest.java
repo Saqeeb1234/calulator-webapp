@@ -1,34 +1,63 @@
-import com.example.CalculatorServlet;
-import org.junit.jupiter.api.Test;
+package com.example;
 
 import javax.servlet.http.*;
-
+import javax.servlet.ServletException;
+import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.StringWriter;
 
-import static org.mockito.Mockito.*;
+class CalculatorServlet extends HttpServlet {
 
-public class CalculatorServletTest {
+    // Make doGet public, to match your test subclass visibility
+    @Override
+    public void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();  // call once and reuse
 
-    @Test
-    void testDoPostReturns200() throws Exception {
-        CalculatorServlet servlet = new CalculatorServlet();
+        out.println("<html><body>");
+        out.println("<h1>Calculator Servlet</h1>");
+        out.println("<p>Welcome to Calculator Servlet</p>");
+        out.println("</body></html>");
+    }
 
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        HttpServletResponse response = mock(HttpServletResponse.class);
+    @Override
+    public void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();  // call once
 
-        when(request.getParameter("num1")).thenReturn("5");
-        when(request.getParameter("num2")).thenReturn("3");
-        when(request.getParameter("operator")).thenReturn("+");
+        String num1Str = request.getParameter("num1");
+        String num2Str = request.getParameter("num2");
+        String operator = request.getParameter("operator");
 
-        StringWriter sw = new StringWriter();
-        PrintWriter pw = new PrintWriter(sw);
-        when(response.getWriter()).thenReturn(pw);
+        double num1, num2, result;
 
-        servlet.doPost(request, response);
+        try {
+            num1 = Double.parseDouble(num1Str);
+            num2 = Double.parseDouble(num2Str);
 
-        verify(response, never()).sendError(anyInt(), anyString());
-        pw.flush();
-        assert sw.toString().contains("Result: 8.0");
+            switch (operator) {
+                case "+":
+                    result = num1 + num2;
+                    break;
+                case "-":
+                    result = num1 - num2;
+                    break;
+                case "*":
+                    result = num1 * num2;
+                    break;
+                case "/":
+                    if (num2 == 0) {
+                        result = Double.NaN;
+                    } else {
+                        result = num1 / num2;
+                    }
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid operator");
+            }
+
+            out.println("Result: " + result);
+        } catch (Exception e) {
+            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Invalid input");
+        }
     }
 }

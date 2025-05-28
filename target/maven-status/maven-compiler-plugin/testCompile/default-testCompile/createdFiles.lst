@@ -1,2 +1,4 @@
-DateInfoServletTest.class
-CalculatorServletTest.class
+com/example/DateInfoServletTest$TestableDateInfoServlet.class
+com/example/DateInfoServletTest.class
+SecurityHeadersFilterTest.class
+com/example/CalculatorServlet.class
