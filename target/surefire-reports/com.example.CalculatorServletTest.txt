@@ -1,24 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.example.CalculatorServletTest
 -------------------------------------------------------------------------------
-Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.021 s <<< FAILURE! - in com.example.CalculatorServletTest
-testDivisionByZero  Time elapsed: 0.007 s  <<< FAILURE!
-java.lang.AssertionError
-	at com.example.CalculatorServletTest.testOperation(CalculatorServletTest.java:38)
-	at com.example.CalculatorServletTest.testDivisionByZero(CalculatorServletTest.java:45)
-
-testGetMethod  Time elapsed: 0.004 s  <<< FAILURE!
-org.mockito.exceptions.verification.TooManyActualInvocations: 
-
-httpServletResponse.getWriter();
-Wanted 1 time:
--> at com.example.CalculatorServletTest.testGetMethod(CalculatorServletTest.java:70)
-But was 4 times:
--> at com.example.CalculatorServlet.doGet(CalculatorServlet.java:15)
--> at com.example.CalculatorServlet.doGet(CalculatorServlet.java:16)
--> at com.example.CalculatorServlet.doGet(CalculatorServlet.java:17)
--> at com.example.CalculatorServlet.doGet(CalculatorServlet.java:18)
-
-
-	at com.example.CalculatorServletTest.testGetMethod(CalculatorServletTest.java:70)
-
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s - in com.example.CalculatorServletTest

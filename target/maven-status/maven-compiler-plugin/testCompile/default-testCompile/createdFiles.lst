@@ -1,4 +1,5 @@
 com/example/DateInfoServletTest$TestableDateInfoServlet.class
+com/example/CalculatorServletTest$TestableCalculatorServlet.class
 com/example/DateInfoServletTest.class
-SecurityHeadersFilterTest.class
-com/example/CalculatorServlet.class
+com/example/CalculatorServletTest.class
+com/example/SecurityHeadersFilterTest.class
