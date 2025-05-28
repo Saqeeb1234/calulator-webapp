@@ -19,8 +19,10 @@ pipeline{
         }
         stage('Mutation Tests - PIT') {
             steps {
-                sh "cd calulator-webapp"
-                sh "mvn org.pitest:pitest-maven:mutationCoverage"
+                sh '''
+                    cd calulator-webapp
+                    mvn org.pitest:pitest-maven:mutationCoverage
+                    '''
             }
             post {
                 always {
