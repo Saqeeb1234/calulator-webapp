@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.ApplicationName }}-svc
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.ApplicationName }}
+    customer: {{ .Values.labels.customer }}
+    env : {{ .Values.labels.env }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{.Values.port}}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ .Values.ApplicationName }}
+    customer: {{ .Values.labels.customer }}
+    env : {{ .Values.labels.env }}

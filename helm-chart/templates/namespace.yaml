@@ -1,0 +1,12 @@
+{{- $ns := .Values.namespace }}
+{{- $existing := lookup "v1" "Namespace" "" $ns }}
+{{- if not $existing }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  creationTimestamp: null
+  name: {{.Values.namespace}}
+  labels:
+    customer: {{ .Values.labels.customer }}
+    env : {{ .Values.labels.env }}  
+{{- end }}

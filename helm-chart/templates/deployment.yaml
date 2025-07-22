@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.ApplicationName }}-app
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.ApplicationName }}
+    customer: {{ .Values.labels.customer }}
+    env: {{ .Values.labels.env }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.ApplicationName }}
+      customer: {{ .Values.labels.customer }}
+      env: {{ .Values.labels.env }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.ApplicationName }}
+        customer: {{ .Values.labels.customer }}
+        env: {{ .Values.labels.env }}
+    spec:
+      initContainers:
+        - name: download-otel-agent
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - "curl -L {{ .Values.otel.agentUrl }} -o /otel/opentelemetry-javaagent.jar"
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel
+      containers:
+        - name: calculator-{{ .Values.ApplicationName }}
+          image: calculator-webapp:52
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: >
+                -javaagent:/otel/opentelemetry-javaagent.jar
+                -Dotel.exporter.otlp.endpoint={{ .Values.otel.otlpEndpoint }}
+                -Dotel.service.name={{ .Values.otel.serviceName }}
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel
+              readOnly: true
+          ports:
+            - containerPort: 8080
+          resources: {}
+
+      volumes:
+        - name: otel-agent
+          emptyDir: {}

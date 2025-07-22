@@ -1,0 +1,15 @@
+ApplicationName: test
+port : 3005
+service: 
+  type: LoadBalancer
+namespace: test
+labels:
+  customer: dummy
+  env: test
+replicas: 1
+
+otel:
+  enabled: true
+  serviceName: test-svc
+  otlpEndpoint: http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
+  agentUrl: https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
