@@ -1,0 +1,4 @@
+extraArgs:
+  - --metric-labels-allowlist=nodes=[*],pods=[*],persistentvolumeclaims=[*],deployments=[*],statefulsets=[*],configmaps=[*],secrets=[*],services=[*],replicasets=[*],namespaces=[*]
+
+# metricAllowlist: kube_service_spec_external_ip
