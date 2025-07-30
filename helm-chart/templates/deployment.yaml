@@ -33,7 +33,7 @@ spec:
               mountPath: /otel
       containers:
         - name: calculator-{{ .Values.ApplicationName }}
-          image: calculator-webapp:52
+          image: calculator-webapp:latest
           env:
             - name: JAVA_TOOL_OPTIONS
               value: >
