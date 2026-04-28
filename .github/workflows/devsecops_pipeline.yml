@@ -36,4 +36,5 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '11'
+      - run: mvn clean package
       - run: mvn org.pitest:pitest-maven:mutationCoverage
