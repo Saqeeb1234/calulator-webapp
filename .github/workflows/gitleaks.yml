@@ -1,0 +1,28 @@
+name: Gitleaks Secret Scan
+ 
+on:
+  push:
+    branches:
+      - "**"        # Runs on push to ANY branch
+  pull_request:
+    branches:
+      - "**"        # Also runs on PRs to any branch
+ 
+jobs:
+  gitleaks:
+    name: Scan for Secrets
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so gitleaks can scan all commits in the push
+          fetch-depth: 0
+ 
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: Set to "true" to use a paid Gitleaks license
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
