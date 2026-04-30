@@ -72,6 +72,7 @@ jobs:
           sarif_file: .
   Scan-dockerfile-and-build-image:
     name: Build docker image and scan dockerfile
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -136,7 +137,7 @@ jobs:
       - name: Prepare ZAP report directory
         run: |
           mkdir -p report
-          cp DevSecOps-Pipline/zap-rules.conf report/
+          cp DevSecOps-Pipeline/zap-rules.conf report/
           chmod -R 777 report
 
       - name: Run OWASP ZAP DAST scan
