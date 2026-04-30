@@ -25,6 +25,7 @@ jobs:
           # Optional: Set to "true" to use a paid Gitleaks license
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}    
   mutation-test:
+    name: Run mutation tests
     runs-on: ubuntu-latest
     needs: gitleaks
     steps:
@@ -38,3 +39,126 @@ jobs:
           java-version: '11'
       - run: mvn clean package
       - run: mvn org.pitest:pitest-maven:mutationCoverage
+  SAST-and-SCA-scan:
+    name: RUn SAST and SCA scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+      # SCA Scan: Checks dependencies
+      - name: Run Snyk SCA
+        uses: snyk/actions/node@master  # Use the action matching your language (e.g., python, maven, go)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --sarif-file-output=snyk-sca.sarif
+        continue-on-error: true
+
+      # SAST Scan: Checks custom code
+      - name: Run Snyk SAST (Snyk Code)
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: code test
+          args: --sarif-file-output=snyk-sast.sarif
+        continue-on-error: true
+
+      # Upload findings to GitHub Security Tab
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .
+  Scan-dockerfile-and-build-image:
+    name: Build docker image and scan dockerfile
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+        
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: calculator-webapp
+          tags: |
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}      
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+  
+  DAST-scan:
+    name: Run DAST scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: calculator-webapp
+          tags: |
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }} 
+
+      - name: Run application container
+        run: |
+          docker run -d \
+            --name calc-container \
+            -p 8081:8080 \
+            ${{ steps.meta.outputs.tags }}
+
+          sleep 15
+
+      - name: Prepare ZAP report directory
+        run: |
+          mkdir -p report
+          cp DevSecOps-Pipline/zap-rules.conf report/
+          chmod -R 777 report
+
+      - name: Run OWASP ZAP DAST scan
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/report:/zap/wrk/:rw \
+            --network="host" \
+            zaproxy/zap-stable \
+            zap-baseline.py \
+            -t http://localhost:8081 \
+            -c zap-rules.conf \
+            -r zap-report.html
+
+      - name: Stop application container
+        if: always()
+        run: |
+          docker stop calc-container || true
+          docker rm calc-container || true
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-dast-report
+          path: report/
