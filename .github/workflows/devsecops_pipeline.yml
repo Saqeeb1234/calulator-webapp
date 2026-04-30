@@ -40,14 +40,14 @@ jobs:
       - run: mvn clean package
       - run: mvn org.pitest:pitest-maven:mutationCoverage
   SAST-and-SCA-scan:
-    name: RUn SAST and SCA scans
+    name: Run SAST and SCA scans
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
       # SCA Scan: Checks dependencies
       - name: Run Snyk SCA
-        uses: snyk/actions/node@master  # Use the action matching your language (e.g., python, maven, go)
+        uses: snyk/actions/maven-3-jdk-11@master  # Use the action matching your language (e.g., python, maven, go)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -57,7 +57,7 @@ jobs:
 
       # SAST Scan: Checks custom code
       - name: Run Snyk SAST (Snyk Code)
-        uses: snyk/actions/node@master
+        uses: snyk/actions/maven-3-jdk-11@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -88,6 +88,9 @@ jobs:
           images: calculator-webapp
           tags: |
             type=sha,format=short
+      
+      - name: Create war file
+        run: mvn clean package
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -110,6 +113,10 @@ jobs:
     name: Run DAST scan
     runs-on: ubuntu-latest
     steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
