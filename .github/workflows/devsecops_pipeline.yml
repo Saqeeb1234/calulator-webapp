@@ -46,12 +46,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
       
-      - name: Verify Snyk authentication
-        run: |
-          docker run --rm \
-            -e SNYK_TOKEN=${{ secrets.SNYK_TOKEN }} \
-            snyk/snyk:maven-3-jdk-11 \
-            snyk auth $SNYK_TOKEN
+      # - name: Verify Snyk authentication
+      #   run: |
+      #     docker run --rm \
+      #       -e SNYK_TOKEN=${{ secrets.SNYK_TOKEN }} \
+      #       snyk/snyk:maven-3-jdk-11 \
+      #       snyk auth $SNYK_TOKEN
 
       # SCA Scan: Checks dependencies
       - name: Run Snyk SCA
