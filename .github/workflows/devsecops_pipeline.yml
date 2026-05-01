@@ -9,7 +9,7 @@ on:
 
 jobs:
   gitleaks:
-    name: scan for secrets
+    name: Scan for secrets
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -45,6 +45,10 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
+      
+      - name: verify snyk api token
+        run: snyk auth --auth-type=token ${{ secrets.SNYK_TOKEN }}
+
       # SCA Scan: Checks dependencies
       - name: Run Snyk SCA
         uses: snyk/actions/maven-3-jdk-11@master  # Use the action matching your language (e.g., python, maven, go)
@@ -116,6 +120,9 @@ jobs:
 
       - name: Checkout Code
         uses: actions/checkout@v6
+
+      - name: Create war file
+        run: mvn clean package
 
       - name: Docker meta
         id: meta
