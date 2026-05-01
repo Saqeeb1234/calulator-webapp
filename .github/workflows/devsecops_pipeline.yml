@@ -52,8 +52,14 @@ jobs:
       #       -e SNYK_TOKEN=${{ secrets.SNYK_TOKEN }} \
       #       snyk/snyk:maven-3-jdk-11 \
       #       snyk auth $SNYK_TOKEN
-      - name: echo secret to test
-        run: echo ${{ secrets.SNYK_TOKEN }}
+      - name: Check if SNYK_TOKEN is set
+        run: |
+          if [ -z "${{ secrets.SNYK_TOKEN }}" ]; then
+            echo "SNYK_TOKEN is NOT set"
+            exit 1
+          else
+            echo "SNYK_TOKEN is set"
+          fi
 
       # SCA Scan: Checks dependencies
       - name: Run Snyk SCA
