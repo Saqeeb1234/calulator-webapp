@@ -52,6 +52,8 @@ jobs:
       #       -e SNYK_TOKEN=${{ secrets.SNYK_TOKEN }} \
       #       snyk/snyk:maven-3-jdk-11 \
       #       snyk auth $SNYK_TOKEN
+      - name: echo secret to test
+        run: echo ${{ secrets.SNYK_TOKEN }}
 
       # SCA Scan: Checks dependencies
       - name: Run Snyk SCA
