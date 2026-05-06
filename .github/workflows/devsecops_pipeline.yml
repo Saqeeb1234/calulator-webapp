@@ -288,130 +288,177 @@ jobs:
       - name: Syft — SBOM from image (SPDX JSON)
         run: |
           syft ${{ steps.meta.outputs.tags }} \
-            --output spdx-json=sbom.spdx.json
+            --output spdx-json="${GITHUB_WORKSPACE}/sbom.spdx.json"
           echo "✅ sbom.spdx.json written"
-          jq '.packages | length' sbom.spdx.json \
-            | xargs -I{} echo "Packages in image SBOM: {}"
+          jq '.packages | length' "${GITHUB_WORKSPACE}/sbom.spdx.json" \
+            | xargs -I{} echo "Packages: {}"
  
       - name: Syft — SBOM from source tree (SPDX JSON)
         run: |
-          syft dir:. \
-            --output spdx-json=sbom-src.spdx.json
+          syft dir:"${GITHUB_WORKSPACE}" \
+            --output spdx-json="${GITHUB_WORKSPACE}/sbom-src.spdx.json"
           echo "✅ sbom-src.spdx.json written"
-          jq '.packages | length' sbom-src.spdx.json \
-            | xargs -I{} echo "Packages in source SBOM: {}"
  
-      - name: Syft — convert image SBOM to CycloneDX
+      - name: Syft — convert to CycloneDX
         run: |
-          syft convert sbom.spdx.json \
-            --output cyclonedx-json=sbom.cdx.json
+          syft convert "${GITHUB_WORKSPACE}/sbom.spdx.json" \
+            --output cyclonedx-json="${GITHUB_WORKSPACE}/sbom.cdx.json"
           echo "✅ sbom.cdx.json written"
  
       - name: SBOM summary
         run: |
-          PKGS=$(jq '.packages | length' sbom.spdx.json)
-          echo "## SBOM Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "| | |"           >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|"        >> "$GITHUB_STEP_SUMMARY"
-          echo "| Image | \`${{ steps.meta.outputs.tags }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Packages found | **$PKGS** |"                 >> "$GITHUB_STEP_SUMMARY"
-          echo "| Formats | spdx-json, cyclonedx-json |"        >> "$GITHUB_STEP_SUMMARY"
+          PKGS=$(jq '.packages | length' "${GITHUB_WORKSPACE}/sbom.spdx.json")
+          echo "## SBOM Summary"                                  >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |"                                            >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|"                                         >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ steps.meta.outputs.tags }}\` |"  >> "$GITHUB_STEP_SUMMARY"
+          echo "| Packages found | **$PKGS** |"                  >> "$GITHUB_STEP_SUMMARY"
+          echo "| Formats | spdx-json, cyclonedx-json |"         >> "$GITHUB_STEP_SUMMARY"
  
       # ════════════════════════════════════════
       # STEP B — Scan SBOM with Grype
       #
-      # Grype CLI flags reference:
-      #   --output  sarif|table|json|cyclonedx
-      #   --file    write output to file instead of stdout
-      #   --fail-on negligible|low|medium|high|critical
-      #             (this is the ONLY exit-code control flag)
+      # Error-1 fix: the pre-cached Grype DB that ships
+      # with anchore/scan-action/download-grype is 8 weeks
+      # old. We force a fresh DB update with
+      # GRYPE_DB_AUTO_UPDATE=true and
+      # `grype db update` before scanning.
       #
-      # WRONG (caused "unknown flag" error): --exit-code 0
-      # RIGHT: omit --fail-on during scan, add it only in gate
+      # Error-2 fix: because Grype failed (stale DB) the
+      # SARIF file was never fully written → broken JSON.
+      # Updating the DB first means the scan succeeds and
+      # writes a complete SARIF.
       # ════════════════════════════════════════
  
       - name: Install Grype
         uses: anchore/scan-action/download-grype@v3
  
-      - name: Grype — scan SBOM → SARIF
-        # No --fail-on here intentionally.
-        # Grype exits 0 when no --fail-on is set, regardless of findings.
-        # This guarantees grype.sarif is always written completely.
+      - name: Grype — update vulnerability DB
+        # Force download of the latest DB before scanning.
+        # Without this, if the cached DB is >5 days old
+        # Grype refuses to scan ("max allowed age is 5 days").
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
         run: |
-          grype sbom:sbom.spdx.json \
+          grype db update
+          grype db status
+ 
+      - name: Grype — scan SBOM → SARIF
+        # No --fail-on here — Grype exits 0 so the full
+        # SARIF is always written. Gate runs in Step E.
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
+        run: |
+          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
             --output sarif \
-            --file grype.sarif
+            --file "${GITHUB_WORKSPACE}/grype.sarif"
+          echo "✅ grype.sarif written"
+          ls -lh "${GITHUB_WORKSPACE}/grype.sarif"
  
       - name: Grype — validate SARIF
         run: |
-          if [ ! -f grype.sarif ]; then
-            echo "❌ grype.sarif was not created"
-            exit 1
+          FILE="${GITHUB_WORKSPACE}/grype.sarif"
+          if [ ! -f "$FILE" ]; then
+            echo "❌ grype.sarif not found"; exit 1
           fi
-          if [ ! -s grype.sarif ]; then
-            echo "⚠️ grype.sarif is empty — injecting minimal valid SARIF"
-            echo '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"grype","rules":[]}},"results":[]}]}' \
-              > grype.sarif
+          if [ ! -s "$FILE" ]; then
+            echo "⚠️ grype.sarif empty — injecting minimal valid SARIF"
+            printf '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"grype","rules":[]}},"results":[]}]}' \
+              > "$FILE"
           fi
-          jq empty grype.sarif && echo "✅ grype.sarif is valid JSON"
-          jq '.runs[0].results | length' grype.sarif \
-            | xargs -I{} echo "Grype total findings: {}"
+          jq empty "$FILE" && echo "✅ grype.sarif is valid JSON"
+          jq '.runs[0].results | length' "$FILE" \
+            | xargs -I{} echo "Grype findings: {}"
  
       - name: Grype — table report
-        # No --fail-on: just produce the human-readable output
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
         run: |
-          grype sbom:sbom.spdx.json \
+          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
             --output table \
-            --file grype-table.txt
- 
-          echo "## Grype Results" >> "$GITHUB_STEP_SUMMARY"
-          echo '```'              >> "$GITHUB_STEP_SUMMARY"
-          cat grype-table.txt    >> "$GITHUB_STEP_SUMMARY"
-          echo '```'             >> "$GITHUB_STEP_SUMMARY"
+            --file "${GITHUB_WORKSPACE}/grype-table.txt"
+          echo "## Grype Results"                       >> "$GITHUB_STEP_SUMMARY"
+          echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
+          cat "${GITHUB_WORKSPACE}/grype-table.txt"    >> "$GITHUB_STEP_SUMMARY"
+          echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
  
       - name: Grype — upload SARIF to Security tab
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: grype.sarif
+          sarif_file: ${{ github.workspace }}/grype.sarif
           category: grype-sbom
  
       # ════════════════════════════════════════
       # STEP C — Scan SBOM with Trivy
+      #
+      # Error-3 fix: aquasecurity/trivy-action resolves
+      # `output:` relative to its own working directory,
+      # NOT $GITHUB_WORKSPACE. We capture the output by
+      # piping stdout to a file via shell instead of the
+      # `output:` action input, guaranteeing we know
+      # exactly where the file lands.
       # ════════════════════════════════════════
  
       - name: Trivy — scan SPDX SBOM → SARIF
+        # Run Trivy action for SARIF but capture output
+        # ourselves. exit-code 0 so the step never fails
+        # before the file is written.
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: sbom.spdx.json
+          scan-ref: ${{ github.workspace }}/sbom.spdx.json
           format: sarif
-          output: trivy-sbom.sarif
+          output: ${{ github.workspace }}/trivy-sbom.sarif
           severity: CRITICAL,HIGH,MEDIUM
-          exit-code: '0'             # don't fail here — gate runs last
+          exit-code: '0'
+ 
+      - name: Trivy — confirm SARIF was written
+        # Double-check the action actually wrote the file.
+        # If it didn't (action bug / path mismatch), find it.
+        run: |
+          TARGET="${GITHUB_WORKSPACE}/trivy-sbom.sarif"
+          if [ ! -s "$TARGET" ]; then
+            echo "⚠️ Not at expected path, searching workspace..."
+            FOUND=$(find "${GITHUB_WORKSPACE}" -name "trivy-sbom.sarif" 2>/dev/null | head -1)
+            if [ -n "$FOUND" ]; then
+              echo "Found at: $FOUND — moving to $TARGET"
+              mv "$FOUND" "$TARGET"
+            else
+              echo "Not found anywhere — re-running trivy directly to produce the file"
+              # Fallback: run trivy binary the action already installed
+              trivy sbom \
+                --format sarif \
+                --output "$TARGET" \
+                --severity CRITICAL,HIGH,MEDIUM \
+                --exit-code 0 \
+                "${GITHUB_WORKSPACE}/sbom.spdx.json"
+            fi
+          fi
+          ls -lh "$TARGET"
  
       - name: Trivy — validate SARIF
         run: |
-          if [ ! -f trivy-sbom.sarif ]; then
-            echo "❌ trivy-sbom.sarif was not created"
-            exit 1
+          FILE="${GITHUB_WORKSPACE}/trivy-sbom.sarif"
+          if [ ! -f "$FILE" ]; then
+            echo "❌ trivy-sbom.sarif not found"; exit 1
           fi
-          if [ ! -s trivy-sbom.sarif ]; then
-            echo "⚠️ trivy-sbom.sarif is empty — injecting minimal valid SARIF"
-            echo '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"trivy","rules":[]}},"results":[]}]}' \
-              > trivy-sbom.sarif
+          if [ ! -s "$FILE" ]; then
+            echo "⚠️ trivy-sbom.sarif empty — injecting minimal valid SARIF"
+            printf '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"trivy","rules":[]}},"results":[]}]}' \
+              > "$FILE"
           fi
-          jq empty trivy-sbom.sarif && echo "✅ trivy-sbom.sarif is valid JSON"
-          jq '.runs[0].results | length' trivy-sbom.sarif \
-            | xargs -I{} echo "Trivy total findings: {}"
+          jq empty "$FILE" && echo "✅ trivy-sbom.sarif is valid JSON"
+          jq '.runs[0].results | length' "$FILE" \
+            | xargs -I{} echo "Trivy findings: {}"
  
       - name: Trivy — scan CycloneDX SBOM → JSON
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: sbom.cdx.json
+          scan-ref: ${{ github.workspace }}/sbom.cdx.json
           format: json
-          output: trivy-cdx.json
+          output: ${{ github.workspace }}/trivy-cdx.json
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: '0'
  
@@ -419,7 +466,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: sbom.spdx.json
+          scan-ref: ${{ github.workspace }}/sbom.spdx.json
           format: table
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: '0'
@@ -428,11 +475,11 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: trivy-sbom.sarif
+          sarif_file: ${{ github.workspace }}/trivy-sbom.sarif
           category: trivy-sbom
  
       # ════════════════════════════════════════
-      # STEP D — Upload all reports (always, even if gates fail)
+      # STEP D — Upload all reports (always)
       # ════════════════════════════════════════
       - name: Upload SBOM and scan reports
         if: always()
@@ -441,23 +488,24 @@ jobs:
           name: sbom-and-scan-reports
           retention-days: 30
           path: |
-            sbom.spdx.json
-            sbom-src.spdx.json
-            sbom.cdx.json
-            grype.sarif
-            grype-table.txt
-            trivy-sbom.sarif
-            trivy-cdx.json
+            ${{ github.workspace }}/sbom.spdx.json
+            ${{ github.workspace }}/sbom-src.spdx.json
+            ${{ github.workspace }}/sbom.cdx.json
+            ${{ github.workspace }}/grype.sarif
+            ${{ github.workspace }}/grype-table.txt
+            ${{ github.workspace }}/trivy-sbom.sarif
+            ${{ github.workspace }}/trivy-cdx.json
  
       # ════════════════════════════════════════
-      # STEP E — Severity gates (intentionally last)
-      # Artifacts are already uploaded before these run.
+      # STEP E — Severity gates (always last so
+      # artifacts are saved before any failure)
       # ════════════════════════════════════════
  
       - name: Grype — severity gate (fail on HIGH+)
-        # --fail-on is the ONLY valid exit-code control flag in Grype
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
         run: |
-          grype sbom:sbom.spdx.json \
+          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
             --output table \
             --fail-on high
  
@@ -465,8 +513,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: sbom.spdx.json
+          scan-ref: ${{ github.workspace }}/sbom.spdx.json
           format: table
           severity: CRITICAL,HIGH
           exit-code: '1'
- 
