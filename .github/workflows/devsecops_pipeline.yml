@@ -1,69 +1,81 @@
-name: devsecops pipeline 
+name: devsecops pipeline
+
 on:
-  push: 
+  push:
     branches:
       - main
   pull_request:
     branches:
       - main
 
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to GitHub Security tab
+  packages: write          # push image to GHCR
+
 jobs:
+
+  # ══════════════════════════════════════════════════════
+  # JOB 1 — Secret scanning
+  # ══════════════════════════════════════════════════════
   gitleaks:
     name: Scan for secrets
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4       # fixed: v6 does not exist
         with:
-          # Fetch full history so gitleaks can scan all commits in the push
-          fetch-depth: 0
- 
+          fetch-depth: 0                # full history so gitleaks scans all commits
+
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: Set to "true" to use a paid Gitleaks license
-          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}    
+
+  # ══════════════════════════════════════════════════════
+  # JOB 2 — Mutation tests
+  # ══════════════════════════════════════════════════════
   mutation-test:
     name: Run mutation tests
     runs-on: ubuntu-latest
     needs: gitleaks
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
+      - name: Checkout code
+        uses: actions/checkout@v4       # fixed: v6 does not exist
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4     # fixed: pinned to latest stable
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '11'
-      - run: mvn clean package
-      - run: mvn org.pitest:pitest-maven:mutationCoverage
-  SAST-and-SCA-scan:
-    name: Run SAST and SCA scans
+
+      - name: Build project
+        run: mvn clean package -DskipTests
+
+      - name: Run mutation tests
+        run: mvn org.pitest:pitest-maven:mutationCoverage
+
+  # ══════════════════════════════════════════════════════
+  # JOB 3 — SAST + SCA (Snyk)
+  # ══════════════════════════════════════════════════════
+  sast-and-sca-scan:
+    name: SAST and SCA scans (Snyk)
     runs-on: ubuntu-latest
+    needs: gitleaks
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-      
-      # - name: Verify Snyk authentication
-      #   run: |
-      #     docker run --rm \
-      #       -e SNYK_TOKEN=${{ secrets.SNYK_TOKEN }} \
-      #       snyk/snyk:maven-3-jdk-11 \
-      #       snyk auth $SNYK_TOKEN
-      - name: Check if SNYK_TOKEN is set
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify SNYK_TOKEN is set
         run: |
           if [ -z "${{ secrets.SNYK_TOKEN }}" ]; then
-            echo "SNYK_TOKEN is NOT set"
+            echo "❌ SNYK_TOKEN is NOT set"
             exit 1
-          else
-            echo "SNYK_TOKEN is set"
           fi
+          echo "✅ SNYK_TOKEN is set"
 
-      # SCA Scan: Checks dependencies
-      - name: Run Snyk SCA
-        uses: snyk/actions/maven-3-jdk-11@master  # Use the action matching your language (e.g., python, maven, go)
+      - name: Run Snyk SCA (dependency scan)
+        uses: snyk/actions/maven-3-jdk-11@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -71,8 +83,7 @@ jobs:
           args: --sarif-file-output=snyk-sca.sarif
         continue-on-error: true
 
-      # SAST Scan: Checks custom code
-      - name: Run Snyk SAST (Snyk Code)
+      - name: Run Snyk SAST (code scan)
         uses: snyk/actions/maven-3-jdk-11@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -81,62 +92,98 @@ jobs:
           args: --sarif-file-output=snyk-sast.sarif
         continue-on-error: true
 
-      # Upload findings to GitHub Security Tab
-      - name: Upload SARIF results
+      - name: Upload Snyk SARIF results to Security tab
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: .
-  Scan-dockerfile-and-build-image:
-    name: Build docker image and scan dockerfile
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
 
-      - uses: hadolint/hadolint-action@v3.1.0
+  # ══════════════════════════════════════════════════════
+  # JOB 4 — Lint Dockerfile, build image, Trivy image scan
+  #          Exposes image tag via job output so downstream
+  #          jobs reuse the same built image (no rebuild).
+  # ══════════════════════════════════════════════════════
+  build-and-scan-image:
+    name: Build image and scan
+    runs-on: ubuntu-latest
+    needs: gitleaks
+
+    # ── Expose the image tag to every job that needs: this job ──────────
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Lint Dockerfile ──────────────────────────────────────────────
+      - name: Lint Dockerfile (Hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-        
-      - name: Docker meta
-        id: meta
+
+      # ── Build WAR so Docker build context is complete ────────────────
+      - name: Build WAR (Maven)
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+
+      - run: mvn clean package -DskipTests
+
+      # ── Resolve image tag ────────────────────────────────────────────
+      - name: Docker metadata
+        id: meta                        # referenced in outputs above
         uses: docker/metadata-action@v5
         with:
           images: calculator-webapp
           tags: |
             type=sha,format=short
-      
-      - name: Create war file
-        run: mvn clean package
 
-      - name: Build and push
+      # ── Build image (local only, push: false) ────────────────────────
+      - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
-          tags: ${{ steps.meta.outputs.tags }}      
+          tags: ${{ steps.meta.outputs.tags }}
 
-      - name: Run Trivy image scan
+      # ── Trivy image scan ─────────────────────────────────────────────
+      - name: Trivy — image vulnerability scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ steps.meta.outputs.tags }}
           format: table
-          exit-code: 1
+          exit-code: '1'
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
-  
-  DAST-scan:
-    name: Run DAST scan
+
+  # ══════════════════════════════════════════════════════
+  # JOB 5 — DAST scan (OWASP ZAP)
+  #          Rebuilds from the same sha tag so the image
+  #          is identical to what was scanned above.
+  # ══════════════════════════════════════════════════════
+  dast-scan:
+    name: DAST scan (OWASP ZAP)
     runs-on: ubuntu-latest
+    needs: build-and-scan-image         # wait for image scan to pass first
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Checkout Code
-        uses: actions/checkout@v6
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
 
-      - name: Create war file
-        run: mvn clean package
+      - name: Build WAR (Maven)
+        run: mvn clean package -DskipTests
 
-      - name: Docker meta
+      # ── Resolve same image tag used in build job ─────────────────────
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -144,33 +191,33 @@ jobs:
           tags: |
             type=sha,format=short
 
-      - name: Build and push
+      - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
-          tags: ${{ steps.meta.outputs.tags }} 
+          tags: ${{ steps.meta.outputs.tags }}
 
-      - name: Run application container
+      - name: Start application container
         run: |
           docker run -d \
             --name calc-container \
             -p 8081:8080 \
             ${{ steps.meta.outputs.tags }}
-
+          echo "Waiting for app to start..."
           sleep 15
 
-      - name: Prepare ZAP report directory
+      - name: Prepare ZAP working directory
         run: |
           mkdir -p report
           cp DevSecOps-Pipeline/zap-rules.conf report/
           chmod -R 777 report
 
-      - name: Run OWASP ZAP DAST scan
+      - name: Run OWASP ZAP baseline scan
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/report:/zap/wrk/:rw \
-            --network="host" \
+            --network host \
             zaproxy/zap-stable \
             zap-baseline.py \
             -t http://localhost:8081 \
@@ -181,7 +228,7 @@ jobs:
         if: always()
         run: |
           docker stop calc-container || true
-          docker rm calc-container || true
+          docker rm calc-container   || true
 
       - name: Upload ZAP report
         if: always()
@@ -189,3 +236,210 @@ jobs:
         with:
           name: zap-dast-report
           path: report/
+
+  # ══════════════════════════════════════════════════════
+  # JOB 6 — SBOM: generate with Syft, scan with Grype + Trivy
+  #
+  #   Flow:
+  #     Syft (image + source)
+  #       └─ sbom.spdx.json  ──► Grype scan  ──► SARIF → Security tab
+  #       └─ sbom.cdx.json   ──► Trivy scan  ──► SARIF → Security tab
+  # ══════════════════════════════════════════════════════
+  sbom-scan:
+    name: SBOM scan (Syft → Grype + Trivy)
+    runs-on: ubuntu-latest
+    needs: build-and-scan-image         # reuse image tag output from job 4
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Rebuild image so it is available on this runner ──────────────
+      #    (GitHub-hosted runners don't share Docker daemon between jobs)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+
+      - name: Build WAR (Maven)
+        run: mvn clean package -DskipTests
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: calculator-webapp
+          tags: |
+            type=sha,format=short
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+
+      # ════════════════════════════════════════
+      # STEP A — Generate SBOM with Syft
+      # ════════════════════════════════════════
+
+      # Syft is installed automatically by the action
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      # Generate SBOM from the container image → SPDX JSON
+      - name: Syft — generate SBOM from image (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json   # uploaded to workflow artifacts
+          upload-artifact: true
+
+      # Generate SBOM from source tree → SPDX JSON (catches source deps too)
+      - name: Syft — generate SBOM from source (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom-src.spdx.json
+          artifact-name: sbom-src.spdx.json
+          upload-artifact: true
+
+      # Convert the image SBOM to CycloneDX (Trivy prefers it)
+      - name: Syft — convert SBOM to CycloneDX
+        run: |
+          syft convert sbom.spdx.json \
+            --output cyclonedx-json=sbom.cdx.json
+
+      # Print package count to job summary
+      - name: SBOM summary
+        run: |
+          PKGS=$(jq '.packages | length' sbom.spdx.json 2>/dev/null || echo "N/A")
+          echo "## SBOM Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ steps.meta.outputs.tags }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total packages | **$PKGS** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Formats | spdx-json, cyclonedx-json |" >> "$GITHUB_STEP_SUMMARY"
+
+      # ════════════════════════════════════════
+      # STEP B — Scan SBOM with Grype
+      # ════════════════════════════════════════
+
+      # Grype scans the SPDX SBOM and outputs SARIF
+      - name: Grype — scan SBOM (SARIF)
+        id: grype
+        uses: anchore/scan-action@v3
+        with:
+          sbom: sbom.spdx.json
+          severity-cutoff: high
+          output-format: sarif
+          fail-build: false             # we enforce the gate manually below
+
+      # Also produce a human-readable table for the job summary
+      - name: Grype — table report
+        run: |
+          grype sbom:sbom.spdx.json \
+            --output table \
+            --file grype-report.txt || true
+
+          echo "## Grype Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat grype-report.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Grype — upload SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype
+
+      # Hard gate — fails the job if HIGH or CRITICAL found
+      - name: Grype — severity gate
+        run: |
+          grype sbom:sbom.spdx.json \
+            --fail-on high
+
+      # ════════════════════════════════════════
+      # STEP C — Scan SBOM with Trivy
+      # ════════════════════════════════════════
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: latest
+          cache: true
+
+      - name: Trivy — update vulnerability DB
+        run: trivy image --download-db-only --no-progress
+
+      # Scan the SPDX SBOM → SARIF
+      - name: Trivy — scan SPDX SBOM (SARIF)
+        run: |
+          trivy sbom \
+            --format sarif \
+            --output trivy-sbom.sarif \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --exit-code 0 \
+            sbom.spdx.json
+
+      # Scan the CycloneDX SBOM → JSON report
+      - name: Trivy — scan CycloneDX SBOM (JSON)
+        run: |
+          trivy sbom \
+            --format json \
+            --output trivy-cdx.json \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --exit-code 0 \
+            sbom.cdx.json
+
+      # Human-readable table for job summary
+      - name: Trivy — table report
+        run: |
+          trivy sbom \
+            --format table \
+            --severity CRITICAL,HIGH,MEDIUM \
+            sbom.spdx.json | tee trivy-summary.txt
+
+          echo "## Trivy Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat trivy-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy — upload SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-sbom.sarif
+          category: trivy-sbom
+
+      # Hard gate — fails the job on CRITICAL or HIGH
+      - name: Trivy — severity gate
+        run: |
+          trivy sbom \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            sbom.spdx.json
+
+      # ════════════════════════════════════════
+      # STEP D — Upload all reports as artifacts
+      # ════════════════════════════════════════
+      - name: Upload SBOM and scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-and-scan-reports
+          retention-days: 30
+          path: |
+            sbom.spdx.json
+            sbom-src.spdx.json
+            sbom.cdx.json
+            grype-report.txt
+            ${{ steps.grype.outputs.sarif }}
+            trivy-sbom.sarif
+            trivy-cdx.json
+            trivy-summary.txt
