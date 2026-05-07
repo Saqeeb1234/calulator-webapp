@@ -378,7 +378,7 @@ jobs:
             | xargs -I{} echo "Grype findings: {}"
  
       - name: Grype — table report
-         uses: anchore/scan-action@v7
+        uses: anchore/scan-action@v7
         with:
           sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
           output-format: table
