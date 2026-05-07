@@ -330,30 +330,37 @@ jobs:
       # writes a complete SARIF.
       # ════════════════════════════════════════
  
-      - name: Install Grype
-        uses: anchore/scan-action/download-grype@v7
+      # - name: Install Grype
+      #   uses: anchore/scan-action/download-grype@v7
  
-      - name: Grype — update vulnerability DB
-        # Force download of the latest DB before scanning.
-        # Without this, if the cached DB is >5 days old
-        # Grype refuses to scan ("max allowed age is 5 days").
-        env:
-          GRYPE_DB_AUTO_UPDATE: "false"
-        run: |
-          grype db update
-          grype db status
+      # - name: Grype — update vulnerability DB
+      #   # Force download of the latest DB before scanning.
+      #   # Without this, if the cached DB is >5 days old
+      #   # Grype refuses to scan ("max allowed age is 5 days").
+      #   env:
+      #     GRYPE_DB_AUTO_UPDATE: "true"
+      #   run: |
+      #     grype db update
+      #     grype db status
+
+      - name: Scan SBOM
+        uses: anchore/scan-action@v7
+        with:
+          sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
+          output-format: sarif
+          output-file: ${GITHUB_WORKSPACE}/grype.sarif
  
-      - name: Grype — scan SBOM → SARIF
-        # No --fail-on here — Grype exits 0 so the full
-        # SARIF is always written. Gate runs in Step E.
-        env:
-          GRYPE_DB_AUTO_UPDATE: "false"
-        run: |
-          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
-            --output sarif \
-            --file "${GITHUB_WORKSPACE}/grype.sarif"
-          echo "✅ grype.sarif written"
-          ls -lh "${GITHUB_WORKSPACE}/grype.sarif"
+      # - name: Grype — scan SBOM → SARIF
+      #   # No --fail-on here — Grype exits 0 so the full
+      #   # SARIF is always written. Gate runs in Step E.
+      #   env:
+      #     GRYPE_DB_AUTO_UPDATE: "true"
+      #   run: |
+      #     grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
+      #       --output sarif \
+      #       --file "${GITHUB_WORKSPACE}/grype.sarif"
+      #     echo "✅ grype.sarif written"
+      #     ls -lh "${GITHUB_WORKSPACE}/grype.sarif"
  
       - name: Grype — validate SARIF
         run: |
@@ -371,16 +378,21 @@ jobs:
             | xargs -I{} echo "Grype findings: {}"
  
       - name: Grype — table report
-        env:
-          GRYPE_DB_AUTO_UPDATE: "true"
-        run: |
-          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
-            --output table \
-            --file "${GITHUB_WORKSPACE}/grype-table.txt"
-          echo "## Grype Results"                       >> "$GITHUB_STEP_SUMMARY"
-          echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
-          cat "${GITHUB_WORKSPACE}/grype-table.txt"    >> "$GITHUB_STEP_SUMMARY"
-          echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
+         uses: anchore/scan-action@v7
+        with:
+          sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
+          output-format: table
+          output-file: ${GITHUB_WORKSPACE}/grype.sarif
+        # env:
+        #   GRYPE_DB_AUTO_UPDATE: "true"
+        # run: |
+        #   grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
+        #     --output table \
+        #     --file "${GITHUB_WORKSPACE}/grype-table.txt"
+        #   echo "## Grype Results"                       >> "$GITHUB_STEP_SUMMARY"
+        #   echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
+        #   cat "${GITHUB_WORKSPACE}/grype-table.txt"    >> "$GITHUB_STEP_SUMMARY"
+        #   echo '```'                                    >> "$GITHUB_STEP_SUMMARY"
  
       - name: Grype — upload SARIF to Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -501,13 +513,20 @@ jobs:
       # artifacts are saved before any failure)
       # ════════════════════════════════════════
  
+      # - name: Grype — severity gate (fail on HIGH+)
+      #   env:
+      #     GRYPE_DB_AUTO_UPDATE: "true"
+      #   run: |
+      #     grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
+      #       --output table \
+      #       --fail-on high
+
       - name: Grype — severity gate (fail on HIGH+)
-        env:
-          GRYPE_DB_AUTO_UPDATE: "true"
-        run: |
-          grype sbom:"${GITHUB_WORKSPACE}/sbom.spdx.json" \
-            --output table \
-            --fail-on high
+        uses: anchore/scan-action@v7
+        with:
+          sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
+          output-format: table
+          fail-build: high
  
       - name: Trivy — severity gate (fail on CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@master
