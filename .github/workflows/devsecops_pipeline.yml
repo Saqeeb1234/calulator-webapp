@@ -366,9 +366,9 @@ jobs:
       - name: Scan SBOM
         uses: anchore/scan-action@v7
         with:
-          sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
+          sbom: sbom.spdx.json
           output-format: sarif
-          output-file: ${GITHUB_WORKSPACE}/grype.sarif
+          output-file: grype.sarif
  
       # - name: Grype — scan SBOM → SARIF
       #   # No --fail-on here — Grype exits 0 so the full
@@ -384,7 +384,7 @@ jobs:
  
       - name: Grype — validate SARIF
         run: |
-          FILE="${GITHUB_WORKSPACE}/grype.sarif"
+          FILE="grype.sarif"
           if [ ! -f "$FILE" ]; then
             echo "❌ grype.sarif not found"; exit 1
           fi
@@ -400,9 +400,9 @@ jobs:
       - name: Grype — table report
         uses: anchore/scan-action@v7
         with:
-          sbom: ${GITHUB_WORKSPACE}/sbom.spdx.json
+          sbom: sbom.spdx.json
           output-format: table
-          output-file: ${GITHUB_WORKSPACE}/grype.sarif
+          output-file: grype.sarif
         # env:
         #   GRYPE_DB_AUTO_UPDATE: "true"
         # run: |
@@ -418,7 +418,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: ${{ github.workspace }}/grype.sarif
+          sarif_file: grype.sarif
           category: grype-sbom
  
       # ════════════════════════════════════════
@@ -439,9 +439,9 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: ${{ github.workspace }}/sbom.spdx.json
+          scan-ref: sbom.spdx.json
           format: sarif
-          output: ${{ github.workspace }}/trivy-sbom.sarif
+          output: trivy-sbom.sarif
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: '0'
  
@@ -449,7 +449,7 @@ jobs:
         # Double-check the action actually wrote the file.
         # If it didn't (action bug / path mismatch), find it.
         run: |
-          TARGET="${GITHUB_WORKSPACE}/trivy-sbom.sarif"
+          TARGET="trivy-sbom.sarif"
           if [ ! -s "$TARGET" ]; then
             echo "⚠️ Not at expected path, searching workspace..."
             FOUND=$(find "${GITHUB_WORKSPACE}" -name "trivy-sbom.sarif" 2>/dev/null | head -1)
@@ -464,14 +464,14 @@ jobs:
                 --output "$TARGET" \
                 --severity CRITICAL,HIGH,MEDIUM \
                 --exit-code 0 \
-                "${GITHUB_WORKSPACE}/sbom.spdx.json"
+                "sbom.spdx.json"
             fi
           fi
           ls -lh "$TARGET"
  
       - name: Trivy — validate SARIF
         run: |
-          FILE="${GITHUB_WORKSPACE}/trivy-sbom.sarif"
+          FILE="trivy-sbom.sarif"
           if [ ! -f "$FILE" ]; then
             echo "❌ trivy-sbom.sarif not found"; exit 1
           fi
@@ -488,9 +488,9 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: ${{ github.workspace }}/sbom.cdx.json
+          scan-ref: sbom.cdx.json
           format: json
-          output: ${{ github.workspace }}/trivy-cdx.json
+          output: trivy-cdx.json
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: '0'
  
@@ -498,7 +498,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: sbom
-          scan-ref: ${{ github.workspace }}/sbom.spdx.json
+          scan-ref: sbom.spdx.json
           format: table
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: '0'
@@ -507,7 +507,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: ${{ github.workspace }}/trivy-sbom.sarif
+          sarif_file: trivy-sbom.sarif
           category: trivy-sbom
  
       # ════════════════════════════════════════
