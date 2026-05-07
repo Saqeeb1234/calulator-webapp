@@ -331,7 +331,7 @@ jobs:
       # ════════════════════════════════════════
  
       - name: Install Grype
-        uses: anchore/scan-action/download-grype@v3
+        uses: anchore/scan-action/download-grype@v7
  
       - name: Grype — update vulnerability DB
         # Force download of the latest DB before scanning.
