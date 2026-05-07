@@ -333,15 +333,15 @@ jobs:
       - name: Install Grype
         uses: anchore/scan-action/download-grype@v3
  
-      # - name: Grype — update vulnerability DB
-      #   # Force download of the latest DB before scanning.
-      #   # Without this, if the cached DB is >5 days old
-      #   # Grype refuses to scan ("max allowed age is 5 days").
-      #   env:
-      #     GRYPE_DB_AUTO_UPDATE: "false"
-      #   run: |
-      #     grype db update
-      #     grype db status
+      - name: Grype — update vulnerability DB
+        # Force download of the latest DB before scanning.
+        # Without this, if the cached DB is >5 days old
+        # Grype refuses to scan ("max allowed age is 5 days").
+        env:
+          GRYPE_DB_AUTO_UPDATE: "false"
+        run: |
+          grype db update
+          grype db status
  
       - name: Grype — scan SBOM → SARIF
         # No --fail-on here — Grype exits 0 so the full
