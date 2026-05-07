@@ -402,8 +402,9 @@ jobs:
         uses: anchore/scan-action@v7
         with:
           sbom: sbom.spdx.json
-          output-format: table
+          output-format: sarif
           output-file: grype.sarif
+          fail-build: high
         # env:
         #   GRYPE_DB_AUTO_UPDATE: "true"
         # run: |
