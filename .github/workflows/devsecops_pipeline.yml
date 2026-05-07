@@ -282,28 +282,48 @@ jobs:
       # STEP A — Generate SBOM with Syft
       # ════════════════════════════════════════
  
-      - name: Install Syft
-        uses: anchore/sbom-action/download-syft@v0
+      # - name: Install Syft
+      #   uses: anchore/sbom-action/download-syft@v0
  
-      - name: Syft — SBOM from image (SPDX JSON)
-        run: |
-          syft ${{ steps.meta.outputs.tags }} \
-            --output spdx-json="${GITHUB_WORKSPACE}/sbom.spdx.json"
-          echo "✅ sbom.spdx.json written"
-          jq '.packages | length' "${GITHUB_WORKSPACE}/sbom.spdx.json" \
-            | xargs -I{} echo "Packages: {}"
+      - uses: anchore/sbom-action@v0
+        name: Syft — SBOM from image (SPDX JSON)
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      # - name: Syft — SBOM from image (SPDX JSON)
+      #   run: |
+      #     syft ${{ steps.meta.outputs.tags }} \
+      #       --output spdx-json="${GITHUB_WORKSPACE}/sbom.spdx.json"
+      #     echo "✅ sbom.spdx.json written"
+      #     jq '.packages | length' "${GITHUB_WORKSPACE}/sbom.spdx.json" \
+      #       | xargs -I{} echo "Packages: {}"
  
-      - name: Syft — SBOM from source tree (SPDX JSON)
-        run: |
-          syft dir:"${GITHUB_WORKSPACE}" \
-            --output spdx-json="${GITHUB_WORKSPACE}/sbom-src.spdx.json"
-          echo "✅ sbom-src.spdx.json written"
+      - uses: anchore/sbom-action@v0
+        name: Syft — SBOM from source tree (SPDX JSON)
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom-src.spdx.json
+
+      # - name: Syft — SBOM from source tree (SPDX JSON)
+      #   run: |
+      #     syft dir:"${GITHUB_WORKSPACE}" \
+      #       --output spdx-json="${GITHUB_WORKSPACE}/sbom-src.spdx.json"
+      #     echo "✅ sbom-src.spdx.json written"
  
       - name: Syft — convert to CycloneDX
-        run: |
-          syft convert "${GITHUB_WORKSPACE}/sbom.spdx.json" \
-            --output cyclonedx-json="${GITHUB_WORKSPACE}/sbom.cdx.json"
-          echo "✅ sbom.cdx.json written"
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+        # run: |
+        #   syft convert "${GITHUB_WORKSPACE}/sbom.spdx.json" \
+        #     --output cyclonedx-json="${GITHUB_WORKSPACE}/sbom.cdx.json"
+        #   echo "✅ sbom.cdx.json written"
  
       - name: SBOM summary
         run: |
